@@ -1,0 +1,52 @@
+@layer theme, base, antd, components, utilities;
+
+@import 'tailwindcss';
+
+:root {
+  --header-height: 40px;
+  --sidebar-width: 56px;
+}
+
+.ant-table-expanded-row-fixed {
+  /* height: 1000px; */
+}
+
+.ant-splitter .ant-splitter-panel {
+  padding: 0;
+}
+
+.ant-table-wrapper .ant-table-tbody > tr > td {
+  border-bottom: 0px solid #f0f0f0;
+}
+
+@theme {
+  @keyframes spin-reverse {
+    from {
+      transform: rotate(360deg);
+    }
+    to {
+      transform: rotate(0deg);
+    }
+  }
+
+  @keyframes fade-in-out {
+    0% {
+      opacity: 0;
+      transform: translateY(10px);
+    }
+    20% {
+      opacity: 1;
+      transform: translateY(0);
+    }
+    80% {
+      opacity: 1;
+      transform: translateY(0);
+    }
+    100% {
+      opacity: 0;
+      transform: translateY(-10px);
+    }
+  }
+  --animate-spin-reverse: spin-reverse 1s linear infinite;
+  --animate-fade-in-out: fade-in-out 4s ease-in-out;
+}

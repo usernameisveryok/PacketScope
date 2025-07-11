@@ -1,0 +1,10 @@
+# Ignore artifacts:
+build
+coverage
+src/assets
+pnpm-lock.yaml
+public/test.html
+.husky
+out
+dist
+modules

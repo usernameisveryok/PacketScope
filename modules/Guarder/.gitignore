@@ -1,0 +1,67 @@
+# Go specific
+*.exe
+*.exe~
+*.dll
+*.so
+*.dylib
+*.test
+*.out
+go.work
+
+# Go build output
+/bin/
+/dist/
+
+# Go vendor directory
+/vendor/
+
+# Go workspace file
+go.work
+
+# eBPF specific
+*.o
+*.elf
+*.bpf.o
+*.bpf.elf
+*.bpf.obj
+*.bpf.obj.o
+
+# Generated files
+conn_tracker_bpfeb.go
+conn_tracker_bpfel.go
+conn_tracker_bpfeb.o
+conn_tracker_bpfel.o
+
+# cmd directory generated files
+cmd/conn-tracker/conn_tracker_bpfeb.go
+cmd/conn-tracker/conn_tracker_bpfel.go
+cmd/conn-tracker/conn_tracker_bpfeb.o
+cmd/conn-tracker/conn_tracker_bpfel.o
+
+# IDE specific
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+
+# OS specific
+.DS_Store
+Thumbs.db
+
+# Debug files
+*.debug
+*.debuginfo
+
+# Log files
+*.log
+
+# Temporary files
+*.tmp
+*.temp
+
+# Ensure go.sum is tracked
+!go.sum 
+
+#vscode
+.vscode/

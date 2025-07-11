@@ -1,0 +1,69 @@
+{
+  "name": "PacketScope",
+  "productName": "PacketScope",
+  "private": true,
+  "version": "0.0.0",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build:ts": "tsc -b && vite build",
+    "build": "vite build --base=./",
+    "lint": "eslint .",
+    "preview": "vite preview --host",
+    "format:check": "npx prettier . --check",
+    "format": "npx prettier . --write",
+    "prepare": "husky"
+  },
+  "dependencies": {
+    "@ant-design/cssinjs": "^1.23.0",
+    "@ant-design/icons": "^5.6.1",
+    "@dnd-kit/core": "^6.3.1",
+    "@dnd-kit/modifiers": "^9.0.0",
+    "@dnd-kit/sortable": "^10.0.0",
+    "@dnd-kit/utilities": "^3.2.2",
+    "@tailwindcss/vite": "^4.0.15",
+    "ahooks": "^3.8.4",
+    "antd": "^5.24.5",
+    "axios": "^1.10.0",
+    "classnames": "^2.5.1",
+    "echarts": "^5.6.0",
+    "lucide-react": "^0.514.0",
+    "react": "^18.3.1",
+    "react-activation": "^0.13.4",
+    "react-contexify": "^6.0.0",
+    "react-dom": "^18.3.1",
+    "react-intl": "^7.1.9",
+    "react-resizable": "^3.0.5",
+    "react-router": "^7.4.0",
+    "tailwindcss": "^4.0.15",
+    "zustand": "^5.0.3"
+  },
+  "devDependencies": {
+    "@eslint/js": "^9.21.0",
+    "@types/node": "^22.13.13",
+    "@types/react": "^18.3.20",
+    "@types/react-dom": "^18.3.5",
+    "@types/react-resizable": "^3.0.8",
+    "@vitejs/plugin-react": "^4.3.4",
+    "eslint": "^9.21.0",
+    "eslint-config-prettier": "^10.1.1",
+    "eslint-plugin-react-hooks": "^5.1.0",
+    "eslint-plugin-react-refresh": "^0.4.19",
+    "fast-glob": "^3.3.3",
+    "globals": "^15.15.0",
+    "husky": "^9.1.7",
+    "lint-staged": "^15.5.0",
+    "mockjs": "^1.1.0",
+    "prettier": "3.5.3",
+    "typescript": "~5.7.2",
+    "typescript-eslint": "^8.24.1",
+    "vite": "^6.2.0",
+    "vite-plugin-svgr": "^4.3.0",
+    "ws": "^8.18.1"
+  },
+  "lint-staged": {
+    "*": [
+      "prettier --write --ignore-unknown"
+    ]
+  }
+}

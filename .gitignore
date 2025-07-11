@@ -1,0 +1,43 @@
+# Logs
+logs
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+lerna-debug.log*
+
+node_modules
+# dist
+dist-ssr
+*.local
+
+# Editor directories and files
+.vscode/*
+!.vscode/extensions.json
+.idea
+.DS_Store
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+*.sw?
+out
+
+
+modules/Locator/.venv
+modules/Locator/venv
+modules/Locator/history
+modules/Locator/.cache
+modules/Tracer/.venv
+modules/Tracer/.cache
+modules/Tracer/.*
+modules/Tracer/bcc-master
+modules/Tracer/__pycache__
+modules/Tracer/*.db
+modules/Tracer/*.db*
+modules/Tracer/FuncIDMap.json
+modules/Analyzer/.venv
+modules/Analyzer/__pycache__
+
+testscript
