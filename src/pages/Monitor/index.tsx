@@ -3,9 +3,14 @@ import { Splitter } from 'antd';
 import PacketDetails from './PacketDetails';
 import FunctionCallChainViewer from './FunctionCallChainViewer';
 import ProtocolStackMonitor from './ProtocolStackMonitor';
-import SocketViewer from './SocketViewer';
+import SocketViewer from './SocetViewer';
+import { useTheme } from '@/stores/useStore';
+import classNames from 'classnames';
+
 
 const Monitor = () => {
+  const { currentTheme } = useTheme();
+  const isDark = currentTheme === 'dark';
   const [contentListHeight, setContentListHeight] = useState<number>(0);
   const [queryParams, setQueryParams] = useState<{
     srcip: string;
@@ -72,7 +77,7 @@ const Monitor = () => {
         setContentListHeight(sizes[0]);
       }}
     >
-      <Splitter.Panel defaultSize="65%" className="flex justify-center items-center packetscope-list-panel bg-white">
+      <Splitter.Panel defaultSize="65%" className={classNames("flex justify-center items-center packetscope-list-panel", { 'bg-gray-900': isDark, 'bg-white': !isDark })}>
         <SocketViewer contentHeight={contentListHeight} onRowClick={handleRowClick} />
       </Splitter.Panel>
       <Splitter.Panel collapsible>
