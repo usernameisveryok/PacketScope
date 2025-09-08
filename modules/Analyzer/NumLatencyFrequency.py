@@ -1839,7 +1839,7 @@ def enter(ipv4_flag, ipv6_flag, sip, dip, sport, dport, protocol):
 
         interval = (end_time_ipv4_tx_linktrans - start_time_ipv4_tx_linktrans) / 100000;
         if interval > 1:
-            print("222")
+            #print("222")
             frequency = float(cnt_ipv4_tx_linktrans) / interval
             cnt_ipv4_tx_linktrans = 0
             start_time_ipv4_tx_linktrans = 0
@@ -2145,7 +2145,7 @@ def enter(ipv4_flag, ipv6_flag, sip, dip, sport, dport, protocol):
         interval = (s['end'] - s['start']) / 1000000
         if interval > 1:
             pps = s['count'] / interval
-            print("eee")
+            #print("eee")
             event_data = {
                 'layer': 'trans',
                 'direction': 'send',
@@ -2989,5 +2989,6 @@ def enter(ipv4_flag, ipv6_flag, sip, dip, sport, dport, protocol):
 
         except KeyboardInterrupt:
             exit()
+
 
 
