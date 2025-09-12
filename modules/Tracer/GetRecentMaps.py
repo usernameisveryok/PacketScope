@@ -10,12 +10,12 @@ from PSUtil import U32ToIpv4
 import time
 import os
 
-def GetRecentMaps(srcport,dstport,srcip,dstip,count):
+def GetRecentMaps(srcport,dstport,srcip,dstip,count,time:float):
     # global database,attachtime
     database=sql.connect("./.cache/FunctionInfo.db")
     # global cursor
     cursor=database.cursor()
-    commandStep1="SELECT * FROM SpecfunctionCall WHERE ID in (200000,200001) and srcport = {} and dstport = {} and srcip = '{}' and dstip = '{}'".format(srcport,dstport,srcip,dstip)
+    commandStep1="SELECT * FROM SpecfunctionCall WHERE ID in (200000,200001) and time > {} and ((srcport = {} and dstport = {} and srcip = '{}' and dstip = '{}') or (srcport = {} and dstport = {} and srcip = '{}' and dstip = '{}'))".format(time,srcport,dstport,srcip,dstip,dstport,srcport,dstip,srcip)
     cursor.execute(commandStep1)
     result=cursor.fetchall()
     result.reverse()
@@ -47,7 +47,7 @@ def GetRecentMaps(srcport,dstport,srcip,dstip,count):
         dataset.append(result4)
         if Ncount>=count:
             break
-    commandStep1="SELECT * FROM SpecfunctionCall WHERE ID in (200002,200003,200004,200005,200006,200007) and srcport = {} and dstport = {} and srcip = '{}' and dstip = '{}'".format(dstport,srcport,dstip,srcip)
+    commandStep1="SELECT * FROM SpecfunctionCall WHERE ID in (200002,200003,200004,200005,200006,200007) and time > {} and ((srcport = {} and dstport = {} and srcip = '{}' and dstip = '{}') or (srcport = {} and dstport = {} and srcip = '{}' and dstip = '{}'))".format(time, dstport, srcport, dstip, srcip, srcport, dstport, srcip, dstip)
     cursor.execute(commandStep1)
     result=cursor.fetchall()
     result.reverse()

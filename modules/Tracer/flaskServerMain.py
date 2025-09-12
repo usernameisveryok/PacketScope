@@ -58,7 +58,11 @@ def GetRecentMap():
     dst_port=request.form["dstport"]
     limit=int(request.form["count"])
     try:
-        result=GetRecentMaps(src_port,dst_port,src_ip,dst_ip,limit)
+        tlimit=float(request.form["timeDownLimit"])
+    except BaseException:
+        tlimit=-1
+    try:
+        result=GetRecentMaps(src_port,dst_port,src_ip,dst_ip,limit,tlimit)
     except sqlite3.OperationalError:
         DeleteHistData()
         return []
