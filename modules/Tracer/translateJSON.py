@@ -234,8 +234,8 @@ if(subprot == 17 || subprot == 6)
     data->ipv4__recvaddr=(data_s[19] << 24) | (data_s[18] << 16) | (data_s[17] << 8) | data_s[16];
     data->lport=data_s[nextprotstart+1]+data_s[nextprotstart]*256;
     data->dport=data_s[nextprotstart+3]+data_s[nextprotstart+2]*256;
-    events.ringbuf_submit(data, 0);
-    return 0;
+    // events.ringbuf_submit(data, 0);
+    // return 0;
 }
 }
 else if(ipver==96)
@@ -253,6 +253,7 @@ else if(ipver==96)
     // ipv6
 }
 events.ringbuf_submit(data, 0);
+
 return 0;
 }
 
@@ -304,8 +305,8 @@ if(subprot == 17 || subprot == 6)
     data->ipv4__recvaddr=(data_s[19] << 24) | (data_s[18] << 16) | (data_s[17] << 8) | data_s[16];
     data->lport=data_s[nextprotstart+1]+data_s[nextprotstart]*256;
     data->dport=data_s[nextprotstart+3]+data_s[nextprotstart+2]*256;
-    events.ringbuf_submit(data, 0);
-    return 0;
+    //events.ringbuf_submit(data, 0);
+    //return 0;
 }
 }
 else if(ipver==96)
