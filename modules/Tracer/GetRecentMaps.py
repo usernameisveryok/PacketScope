@@ -35,13 +35,13 @@ def GetRecentMaps(srcport,dstport,srcip,dstip,count):
         timeStartR=CorCall[0]
         IDnow=CorCall[2]
         PIDnow=CorCall[3]
-        commandStep3="SELECT * FROM functionCall WHERE time > {} and isRet = 1 and ID = {} and PID = {}".format(timeStart,IDnow,PIDnow)
+        commandStep3="SELECT * FROM functionCall WHERE time > {} and isRet = 1 and ID = {} and PID = {}".format(timeStartR,IDnow,PIDnow)
         cursor.execute(commandStep3)
         result3=cursor.fetchall()
         if len(result3)<=0:
             continue
         timeEnd=result3[0][0]
-        commandStep4="SELECT * FROM functionCall WHERE time >= {} and time<= {} and PID = {}".format(timeStart,timeEnd,PIDnow)
+        commandStep4="SELECT * FROM functionCall WHERE time >= {} and time<= {} and PID = {}".format(timeStartR,timeEnd,PIDnow)
         cursor.execute(commandStep4)
         result4=cursor.fetchall()
         dataset.append(result4)
