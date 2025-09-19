@@ -10,13 +10,8 @@
 
 安装 Python 环境和依赖：
 ```bash
-# 创建虚拟环境
-python3 -m venv .venv
 
-# 激活虚拟环境
-source .venv/bin/activate
-
-# 安装 Python 依赖
+# 安装 Python 依赖，应保证运行pip install的环境与bcc所在python环境相同，保证bcc所在环境和依赖处于同一环境下
 pip install -r requirements.txt
 
 ```
@@ -25,18 +20,15 @@ pip install -r requirements.txt
 运行脚本前需具有管理员权限，并确保系统支持 eBPF（Linux 内核 ≥ 6.8）：
 
 ```bash
-# 切换为 root 用户（或使用 sudo）
-sudo -s
+# 切换为 root 用户
+sudo su
 
-# 以 root 权限执行（使用 sudo 调用此脚本时生效）
-ulimit -n 32768
+# 切换为 root 用户
 
-# 清理数据库文件
-rm -rf *.db
-rm -rf *.db-*
+su
 
-# 激活虚拟环境
-source .venv/bin/activate
+# 以 root 权限执行（请在root权限下使用，sudo无此指令）
+ulimit -n 65535
 
 # 启动监控脚本
 python flaskServerMain.py
