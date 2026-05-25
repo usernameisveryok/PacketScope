@@ -1,0 +1,1101 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Agent-Programmable eBPF Filters: LLM-Driven Runtime Defense Synthesis at the XDP Data Plane</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Source+Serif+4:ital,wght@0,300;0,400;0,600;0,700;1,400&family=Source+Code+Pro:wght@400;600&family=Inter:wght@300;400;500;600&display=swap');
+
+  :root {
+    --bg: #0a0a0f;
+    --surface: #12121a;
+    --surface2: #1a1a2e;
+    --accent: #6366f1;
+    --accent-light: #818cf8;
+    --accent-glow: rgba(99, 102, 241, 0.15);
+    --text: #e2e8f0;
+    --text-dim: #94a3b8;
+    --text-bright: #f1f5f9;
+    --green: #10b981;
+    --red: #ef4444;
+    --orange: #f59e0b;
+    --cyan: #06b6d4;
+    --pink: #ec4899;
+  }
+
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+
+  html, body {
+    height: 100%;
+    font-family: 'Inter', sans-serif;
+    background: var(--bg);
+    color: var(--text);
+    overflow: hidden;
+  }
+
+  .slide-container {
+    width: 100vw;
+    height: 100vh;
+    overflow: hidden;
+    position: relative;
+  }
+
+  .slide {
+    position: absolute;
+    top: 0; left: 0;
+    width: 100vw;
+    height: 100vh;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    padding: 60px 100px;
+    opacity: 0;
+    transform: translateX(60px);
+    transition: opacity 0.5s ease, transform 0.5s ease;
+    pointer-events: none;
+  }
+
+  .slide.active {
+    opacity: 1;
+    transform: translateX(0);
+    pointer-events: auto;
+  }
+
+  .slide.prev {
+    opacity: 0;
+    transform: translateX(-60px);
+  }
+
+  h1 {
+    font-family: 'Source Serif 4', Georgia, serif;
+    font-size: 2.8em;
+    font-weight: 700;
+    color: var(--text-bright);
+    line-height: 1.15;
+    margin-bottom: 16px;
+  }
+
+  h2 {
+    font-family: 'Source Serif 4', Georgia, serif;
+    font-size: 2.1em;
+    font-weight: 600;
+    color: var(--text-bright);
+    margin-bottom: 24px;
+    border-bottom: 2px solid var(--accent);
+    padding-bottom: 12px;
+    display: inline-block;
+  }
+
+  h3 {
+    font-size: 1.2em;
+    font-weight: 500;
+    color: var(--accent-light);
+    margin-bottom: 12px;
+    text-transform: uppercase;
+    letter-spacing: 2px;
+  }
+
+  p, li {
+    font-size: 1.15em;
+    line-height: 1.7;
+    color: var(--text);
+  }
+
+  ul { list-style: none; padding-left: 0; }
+  ul li {
+    padding: 8px 0 8px 28px;
+    position: relative;
+  }
+  ul li::before {
+    content: '';
+    position: absolute;
+    left: 0;
+    top: 16px;
+    width: 10px;
+    height: 10px;
+    border-radius: 2px;
+    background: var(--accent);
+    transform: rotate(45deg);
+  }
+
+  .subtitle {
+    font-size: 1.3em;
+    color: var(--text-dim);
+    font-weight: 300;
+    margin-bottom: 8px;
+  }
+
+  .authors {
+    font-size: 1.05em;
+    color: var(--text-dim);
+    margin-top: 28px;
+    font-style: italic;
+  }
+
+  .venue {
+    font-size: 0.95em;
+    color: var(--accent-light);
+    margin-top: 8px;
+    letter-spacing: 1px;
+  }
+
+  code, .code {
+    font-family: 'Source Code Pro', monospace;
+    font-size: 0.85em;
+    background: var(--surface2);
+    padding: 2px 8px;
+    border-radius: 4px;
+    color: var(--cyan);
+  }
+
+  pre {
+    font-family: 'Source Code Pro', monospace;
+    font-size: 0.82em;
+    background: var(--surface);
+    border: 1px solid rgba(99, 102, 241, 0.2);
+    border-radius: 8px;
+    padding: 20px 24px;
+    overflow-x: auto;
+    line-height: 1.6;
+    color: var(--text);
+    margin: 16px 0;
+  }
+
+  pre .kw { color: var(--pink); }
+  pre .fn { color: var(--accent-light); }
+  pre .cm { color: var(--text-dim); font-style: italic; }
+  pre .st { color: var(--green); }
+  pre .num { color: var(--orange); }
+
+  .two-col {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 48px;
+    align-items: start;
+  }
+
+  .three-col {
+    display: grid;
+    grid-template-columns: 1fr 1fr 1fr;
+    gap: 32px;
+  }
+
+  .card {
+    background: var(--surface);
+    border: 1px solid rgba(99, 102, 241, 0.15);
+    border-radius: 12px;
+    padding: 28px;
+    transition: border-color 0.3s;
+  }
+  .card:hover {
+    border-color: var(--accent);
+  }
+  .card h4 {
+    font-size: 1.1em;
+    font-weight: 600;
+    color: var(--accent-light);
+    margin-bottom: 12px;
+  }
+  .card p {
+    font-size: 0.95em;
+    color: var(--text-dim);
+  }
+
+  .highlight-box {
+    background: var(--accent-glow);
+    border-left: 4px solid var(--accent);
+    padding: 20px 24px;
+    border-radius: 0 8px 8px 0;
+    margin: 20px 0;
+  }
+
+  .tag {
+    display: inline-block;
+    background: var(--accent-glow);
+    color: var(--accent-light);
+    padding: 4px 12px;
+    border-radius: 20px;
+    font-size: 0.8em;
+    font-weight: 500;
+    margin: 2px 4px;
+  }
+
+  .vs-table {
+    width: 100%;
+    border-collapse: separate;
+    border-spacing: 0;
+    margin: 20px 0;
+  }
+  .vs-table th {
+    background: var(--surface2);
+    padding: 14px 20px;
+    text-align: left;
+    font-weight: 600;
+    color: var(--text-bright);
+    border-bottom: 2px solid var(--accent);
+  }
+  .vs-table td {
+    padding: 12px 20px;
+    border-bottom: 1px solid rgba(255,255,255,0.06);
+    font-size: 0.95em;
+  }
+  .vs-table tr:nth-child(even) td {
+    background: rgba(255,255,255,0.02);
+  }
+  .check { color: var(--green); font-weight: bold; }
+  .cross { color: var(--red); font-weight: bold; }
+
+  /* Architecture diagram */
+  .arch-diagram {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0;
+    margin: 30px 0;
+  }
+  .arch-box {
+    background: var(--surface);
+    border: 2px solid var(--accent);
+    border-radius: 10px;
+    padding: 18px 22px;
+    text-align: center;
+    min-width: 160px;
+  }
+  .arch-box.kernel {
+    border-color: var(--green);
+    background: rgba(16, 185, 129, 0.08);
+  }
+  .arch-box.agent {
+    border-color: var(--pink);
+    background: rgba(236, 72, 153, 0.08);
+  }
+  .arch-box .label {
+    font-size: 0.75em;
+    text-transform: uppercase;
+    letter-spacing: 1px;
+    color: var(--text-dim);
+    margin-bottom: 6px;
+  }
+  .arch-box .name {
+    font-weight: 600;
+    font-size: 1.05em;
+    color: var(--text-bright);
+  }
+  .arch-arrow {
+    font-size: 1.8em;
+    color: var(--accent);
+    padding: 0 12px;
+  }
+
+  /* Pipeline diagram */
+  .pipeline {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0;
+    margin: 24px 0;
+    flex-wrap: wrap;
+  }
+  .pipeline-step {
+    background: var(--surface);
+    border: 1px solid var(--accent);
+    border-radius: 8px;
+    padding: 14px 18px;
+    text-align: center;
+    min-width: 120px;
+  }
+  .pipeline-step .step-num {
+    background: var(--accent);
+    color: white;
+    border-radius: 50%;
+    width: 24px;
+    height: 24px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 0.75em;
+    font-weight: 700;
+    margin-bottom: 8px;
+  }
+  .pipeline-step .step-label {
+    font-size: 0.85em;
+    color: var(--text);
+    font-weight: 500;
+  }
+  .pipeline-step .step-detail {
+    font-size: 0.7em;
+    color: var(--text-dim);
+    margin-top: 4px;
+  }
+  .pipeline-arrow {
+    font-size: 1.4em;
+    color: var(--accent-light);
+    padding: 0 6px;
+  }
+
+  /* Safety layers */
+  .safety-stack {
+    display: flex;
+    flex-direction: column;
+    gap: 0;
+    max-width: 600px;
+    margin: 20px auto;
+  }
+  .safety-layer {
+    padding: 16px 24px;
+    text-align: center;
+    font-weight: 500;
+    border: 1px solid;
+    position: relative;
+  }
+  .safety-layer:first-child { border-radius: 10px 10px 0 0; }
+  .safety-layer:last-child { border-radius: 0 0 10px 10px; }
+  .safety-layer.l1 { background: rgba(239,68,68,0.12); border-color: var(--red); color: var(--red); }
+  .safety-layer.l2 { background: rgba(245,158,11,0.12); border-color: var(--orange); color: var(--orange); }
+  .safety-layer.l3 { background: rgba(99,102,241,0.12); border-color: var(--accent); color: var(--accent-light); }
+  .safety-layer.l4 { background: rgba(16,185,129,0.12); border-color: var(--green); color: var(--green); }
+  .safety-label {
+    font-size: 0.7em;
+    text-transform: uppercase;
+    letter-spacing: 2px;
+    position: absolute;
+    right: 16px;
+    top: 50%;
+    transform: translateY(-50%);
+    opacity: 0.6;
+  }
+
+  /* Navigation */
+  .nav {
+    position: fixed;
+    bottom: 24px;
+    right: 32px;
+    display: flex;
+    gap: 12px;
+    z-index: 100;
+  }
+  .nav button {
+    background: var(--surface2);
+    border: 1px solid rgba(99,102,241,0.3);
+    color: var(--text);
+    padding: 10px 20px;
+    border-radius: 8px;
+    cursor: pointer;
+    font-size: 0.9em;
+    transition: all 0.2s;
+  }
+  .nav button:hover {
+    background: var(--accent);
+    color: white;
+  }
+
+  .slide-num {
+    position: fixed;
+    bottom: 28px;
+    left: 32px;
+    font-size: 0.85em;
+    color: var(--text-dim);
+    z-index: 100;
+  }
+
+  .footnote {
+    position: absolute;
+    bottom: 24px;
+    left: 100px;
+    font-size: 0.75em;
+    color: var(--text-dim);
+    font-style: italic;
+  }
+
+  /* Metrics */
+  .metric {
+    text-align: center;
+    padding: 20px;
+  }
+  .metric .value {
+    font-size: 3em;
+    font-weight: 700;
+    color: var(--accent-light);
+    line-height: 1;
+  }
+  .metric .unit {
+    font-size: 1.2em;
+    color: var(--text-dim);
+    margin-top: 8px;
+  }
+
+  /* Animations */
+  @keyframes fadeInUp {
+    from { opacity: 0; transform: translateY(20px); }
+    to { opacity: 1; transform: translateY(0); }
+  }
+  .slide.active .anim {
+    animation: fadeInUp 0.6s ease forwards;
+  }
+  .slide.active .anim.d1 { animation-delay: 0.1s; opacity: 0; }
+  .slide.active .anim.d2 { animation-delay: 0.25s; opacity: 0; }
+  .slide.active .anim.d3 { animation-delay: 0.4s; opacity: 0; }
+  .slide.active .anim.d4 { animation-delay: 0.55s; opacity: 0; }
+  .slide.active .anim.d5 { animation-delay: 0.7s; opacity: 0; }
+
+  .glow-text {
+    background: linear-gradient(135deg, var(--accent-light), var(--cyan));
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
+  }
+</style>
+</head>
+<body>
+
+<div class="slide-container">
+
+<!-- ===== SLIDE 1: Title ===== -->
+<div class="slide active" id="slide-1">
+  <div style="max-width: 900px;">
+    <h3 class="anim d1">USENIX Security 2026 / Under Review</h3>
+    <h1 class="anim d2" style="font-size: 2.4em; margin-bottom: 24px;">
+      <span class="glow-text">Agent-Programmable eBPF Filters</span>:<br>
+      LLM-Driven Runtime Defense Synthesis<br>at the XDP Data Plane
+    </h1>
+    <p class="subtitle anim d3">
+      Replacing static rule engines with AI-generated, verifier-safe eBPF bytecode
+      for adaptive network defense at wire speed.
+    </p>
+    <p class="authors anim d4">
+      PacketScope Project &mdash; Systems Security Research
+    </p>
+    <p class="venue anim d5">
+      eBPF &middot; XDP &middot; LLM Agent &middot; Network Defense &middot; Programmable Data Plane
+    </p>
+  </div>
+</div>
+
+<!-- ===== SLIDE 2: Problem ===== -->
+<div class="slide" id="slide-2">
+  <h2 class="anim d1">The Problem: Static Rules Cannot Keep Pace</h2>
+  <div class="two-col" style="margin-top: 20px;">
+    <div class="anim d2">
+      <h4 style="color: var(--red); margin-bottom: 16px;">Limitations of Rule-Based Filtering</h4>
+      <ul>
+        <li><strong>Fixed expressiveness:</strong> 5-tuple matching cannot encode stateful behavior, temporal patterns, or cross-flow correlation</li>
+        <li><strong>Rule explosion:</strong> N threats &times; M protocols &times; K variants = combinatorial blowup of static rules</li>
+        <li><strong>Reactive only:</strong> rules are written <em>after</em> an attack is understood; zero-day threats pass through</li>
+        <li><strong>No adaptation:</strong> a fixed-threshold rate limit fails when traffic patterns shift</li>
+      </ul>
+    </div>
+    <div class="anim d3">
+      <div class="highlight-box" style="margin-bottom: 20px;">
+        <strong>Key Insight:</strong> The gap is not in matching speed (eBPF is fast enough) but in <em>expressiveness</em> &mdash;
+        what logic can the filter encode at all?
+      </div>
+      <h4 style="color: var(--orange); margin-bottom: 16px;">Current PacketScope Guarder</h4>
+      <ul>
+        <li>32 static rules in BPF_MAP_TYPE_ARRAY</li>
+        <li>Sequential linear scan per packet</li>
+        <li>AI generates JSON rule descriptors only</li>
+        <li>Cannot express: rate limits, bloom filters, protocol parsing, state machines</li>
+      </ul>
+    </div>
+  </div>
+</div>
+
+<!-- ===== SLIDE 3: Approach ===== -->
+<div class="slide" id="slide-3">
+  <h2 class="anim d1">Our Approach: Agent-Programmable eBPF</h2>
+  <p class="anim d2" style="margin-bottom: 28px; font-size: 1.2em; max-width: 850px;">
+    Instead of constraining the AI agent to emit <code>{"src_ip": "...", "action": "drop"}</code> rule descriptors,
+    we let it generate <strong>arbitrary eBPF C code</strong> that compiles to kernel-verified XDP bytecode &mdash;
+    turning the data plane itself into an <em>AI-programmable defense surface</em>.
+  </p>
+
+  <div class="pipeline anim d3">
+    <div class="pipeline-step">
+      <div class="step-num">1</div>
+      <div class="step-label">Natural Language</div>
+      <div class="step-detail">"Block SYN floods<br>over 100/s per IP"</div>
+    </div>
+    <div class="pipeline-arrow">&rarr;</div>
+    <div class="pipeline-step">
+      <div class="step-num">2</div>
+      <div class="step-label">LLM Agent</div>
+      <div class="step-detail">GPT-4 / Claude<br>code generation</div>
+    </div>
+    <div class="pipeline-arrow">&rarr;</div>
+    <div class="pipeline-step">
+      <div class="step-num">3</div>
+      <div class="step-label">Sandbox</div>
+      <div class="step-detail">Static analysis<br>banned helpers check</div>
+    </div>
+    <div class="pipeline-arrow">&rarr;</div>
+    <div class="pipeline-step">
+      <div class="step-num">4</div>
+      <div class="step-label">Compile</div>
+      <div class="step-detail">clang -target bpf<br>&rarr; ELF object</div>
+    </div>
+    <div class="pipeline-arrow">&rarr;</div>
+    <div class="pipeline-step">
+      <div class="step-num">5</div>
+      <div class="step-label">Kernel Verifier</div>
+      <div class="step-detail">Memory safety<br>termination proof</div>
+    </div>
+    <div class="pipeline-arrow">&rarr;</div>
+    <div class="pipeline-step" style="border-color: var(--green);">
+      <div class="step-num" style="background: var(--green);">6</div>
+      <div class="step-label">XDP Hot-Load</div>
+      <div class="step-detail">Tail call slot<br>zero-downtime</div>
+    </div>
+  </div>
+
+  <div class="highlight-box anim d4" style="max-width: 850px;">
+    <strong>Formal safety guarantee:</strong> The eBPF kernel verifier mathematically proves memory safety,
+    bounded execution, and resource safety of every generated program before it touches a single packet.
+    No AI-generated code runs without passing verification.
+  </div>
+</div>
+
+<!-- ===== SLIDE 4: Architecture ===== -->
+<div class="slide" id="slide-4">
+  <h2 class="anim d1">System Architecture</h2>
+
+  <div class="anim d2" style="margin: 20px 0;">
+    <div class="arch-diagram">
+      <div class="arch-box agent">
+        <div class="label">User Space</div>
+        <div class="name">LLM Agent</div>
+        <div style="font-size:0.75em; color:var(--text-dim); margin-top:4px;">GPT-4 / Claude</div>
+      </div>
+      <div class="arch-arrow">&rarr;</div>
+      <div class="arch-box">
+        <div class="label">User Space</div>
+        <div class="name">Codegen Engine</div>
+        <div style="font-size:0.75em; color:var(--text-dim); margin-top:4px;">Template + Sandbox</div>
+      </div>
+      <div class="arch-arrow">&rarr;</div>
+      <div class="arch-box">
+        <div class="label">User Space</div>
+        <div class="name">clang -target bpf</div>
+        <div style="font-size:0.75em; color:var(--text-dim); margin-top:4px;">C &rarr; ELF bytecode</div>
+      </div>
+      <div class="arch-arrow">&rarr;</div>
+      <div class="arch-box kernel">
+        <div class="label">Kernel</div>
+        <div class="name">eBPF Verifier</div>
+        <div style="font-size:0.75em; color:var(--text-dim); margin-top:4px;">Safety proof</div>
+      </div>
+      <div class="arch-arrow">&rarr;</div>
+      <div class="arch-box kernel">
+        <div class="label">Kernel / XDP</div>
+        <div class="name">Tail Call Slot</div>
+        <div style="font-size:0.75em; color:var(--text-dim); margin-top:4px;">Wire-speed exec</div>
+      </div>
+    </div>
+  </div>
+
+  <div class="two-col anim d3">
+    <div>
+      <h4 style="color: var(--cyan); margin-bottom: 12px;">Tail Call Filter Chain</h4>
+      <pre><span class="cm">// Main XDP program (conn_tracker)</span>
+<span class="fn">conn_tracker</span>(ctx)
+  &rarr; parse packet headers
+  &rarr; populate <span class="fn">pkt_ctx_map</span> (per-CPU)
+  &rarr; <span class="kw">bpf_tail_call</span>(ctx, prog_filter_map, <span class="num">0</span>)
+
+<span class="cm">// Agent Filter Slot 0</span>
+<span class="fn">agent_filter_0</span>(ctx)
+  &rarr; read <span class="fn">pkt_ctx_map</span>
+  &rarr; execute agent logic
+  &rarr; <span class="kw">return XDP_DROP</span> or <span class="kw">chain_next</span>
+
+<span class="cm">// Agent Filter Slot 1 (chained)</span>
+<span class="fn">agent_filter_1</span>(ctx)
+  &rarr; ...</pre>
+    </div>
+    <div>
+      <h4 style="color: var(--cyan); margin-bottom: 12px;">Shared Packet Context</h4>
+      <pre><span class="kw">struct</span> pkt_context {
+    __u32 src_ip, dst_ip;
+    __u16 src_port, dst_port;
+    __u8  protocol;
+    __u8  tcp_flags;
+    __u8  icmp_type, icmp_code;
+    __u32 pkt_len;
+    __u64 timestamp;
+    __u32 ifindex;
+};</pre>
+      <div class="highlight-box" style="margin-top: 12px;">
+        <strong>Key design:</strong> Main program parses once, agent programs
+        read structured metadata &mdash; no redundant header parsing, no
+        raw memory access.
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ===== SLIDE 5: Safety Model ===== -->
+<div class="slide" id="slide-5">
+  <h2 class="anim d1">Multi-Layer Safety Model</h2>
+  <div class="two-col" style="margin-top: 16px;">
+    <div class="anim d2">
+      <div class="safety-stack">
+        <div class="safety-layer l1">
+          <strong>Layer 1: Static Sandbox Analysis</strong>
+          <div style="font-size:0.85em; margin-top:6px; color: var(--text-dim);">
+            Banned helpers, keyword blocklist, line count limits,<br>
+            unbounded loop detection, unsafe pointer cast check
+          </div>
+          <span class="safety-label">USER SPACE</span>
+        </div>
+        <div class="safety-layer l2">
+          <strong>Layer 2: Template Confinement</strong>
+          <div style="font-size:0.85em; margin-top:6px; color: var(--text-dim);">
+            Agent code inserted into a safe template wrapper;<br>
+            cannot declare maps, headers, or function signatures
+          </div>
+          <span class="safety-label">USER SPACE</span>
+        </div>
+        <div class="safety-layer l3">
+          <strong>Layer 3: Compiler Enforcement</strong>
+          <div style="font-size:0.85em; margin-top:6px; color: var(--text-dim);">
+            clang -Wall -Werror -target bpf<br>
+            Type checking, undefined behavior detection
+          </div>
+          <span class="safety-label">COMPILE</span>
+        </div>
+        <div class="safety-layer l4">
+          <strong>Layer 4: Kernel eBPF Verifier</strong>
+          <div style="font-size:0.85em; margin-top:6px; color: var(--text-dim);">
+            Mathematical proof of memory safety, bounded execution,<br>
+            valid map access, no kernel pointer leaks
+          </div>
+          <span class="safety-label">KERNEL</span>
+        </div>
+      </div>
+    </div>
+    <div class="anim d3">
+      <h4 style="color: var(--green); margin-bottom: 16px;">Sandbox Enforced Constraints</h4>
+      <table class="vs-table">
+        <tr><th>Constraint</th><th>Enforcement</th></tr>
+        <tr><td>Max 200 lines of code</td><td>Static analysis</td></tr>
+        <tr><td>No <code>bpf_probe_read*</code></td><td>Banned helper list</td></tr>
+        <tr><td>No <code>bpf_redirect*</code></td><td>Banned helper list</td></tr>
+        <tr><td>No <code>#include</code></td><td>Regex check</td></tr>
+        <tr><td>No new map declarations</td><td>Keyword block</td></tr>
+        <tr><td>No <code>while</code> loops</td><td>Regex + verifier</td></tr>
+        <tr><td>No inline assembly</td><td>Keyword block</td></tr>
+        <tr><td>Bounded execution</td><td>Kernel verifier</td></tr>
+        <tr><td>Memory safety</td><td>Kernel verifier</td></tr>
+      </table>
+      <div class="highlight-box" style="margin-top: 16px;">
+        Even if the LLM is adversarially prompted, the kernel verifier
+        provides an <strong>unforgeable safety guarantee</strong>.
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ===== SLIDE 6: Capability Examples ===== -->
+<div class="slide" id="slide-6">
+  <h2 class="anim d1">Beyond Static Rules: New Capabilities</h2>
+  <div class="three-col" style="margin-top: 20px;">
+    <div class="card anim d2">
+      <h4>1. Adaptive SYN Flood Detection</h4>
+      <p>Per-IP SYN rate tracking using hashed timestamp buckets.
+         Dynamically drops IPs exceeding threshold &mdash; impossible with a static rule
+         that has no concept of <em>rate over time</em>.</p>
+      <div style="margin-top: 12px;">
+        <span class="tag">Stateful</span>
+        <span class="tag">Per-IP</span>
+        <span class="tag">Temporal</span>
+      </div>
+    </div>
+    <div class="card anim d3">
+      <h4>2. DNS Tunneling Detection</h4>
+      <p>Tracks DNS query frequency per source IP using bloom filters.
+         IPs with anomalously high DNS-over-UDP rates are flagged &mdash;
+         static rules cannot count across packets.</p>
+      <div style="margin-top: 12px;">
+        <span class="tag">Cross-Packet</span>
+        <span class="tag">Bloom Filter</span>
+        <span class="tag">Protocol-Aware</span>
+      </div>
+    </div>
+    <div class="card anim d4">
+      <h4>3. Coordinated Port Scan Detection</h4>
+      <p>Detects distributed scans by tracking distinct destination ports
+         per source IP. Triggers when an IP touches &gt;N ports within
+         a time window &mdash; requires state machines, not rules.</p>
+      <div style="margin-top: 12px;">
+        <span class="tag">Distributed</span>
+        <span class="tag">Counter Array</span>
+        <span class="tag">Window-Based</span>
+      </div>
+    </div>
+  </div>
+  <div class="three-col" style="margin-top: 24px;">
+    <div class="card anim d3">
+      <h4>4. TLS ClientHello Fingerprinting</h4>
+      <p>Identifies malicious clients by matching TLS handshake byte patterns (JA3-like).
+         Static rules operate at L3/L4 only; this filter operates at L7.</p>
+      <div style="margin-top: 12px;">
+        <span class="tag">L7 DPI</span>
+        <span class="tag">Fingerprint</span>
+      </div>
+    </div>
+    <div class="card anim d4">
+      <h4>5. Adaptive Rate Limiting</h4>
+      <p>Implements token-bucket rate limiting with dynamic thresholds that adjust
+         based on observed traffic baseline. Graceful degradation, not binary drop.</p>
+      <div style="margin-top: 12px;">
+        <span class="tag">Token Bucket</span>
+        <span class="tag">Self-Tuning</span>
+      </div>
+    </div>
+    <div class="card anim d5">
+      <h4>6. ICMP Covert Channel Blocker</h4>
+      <p>Detects ICMP payloads with anomalous entropy (data exfiltration). Tracks
+         per-flow ICMP byte ratios and blocks high-entropy ICMP streams.</p>
+      <div style="margin-top: 12px;">
+        <span class="tag">Entropy</span>
+        <span class="tag">Exfil Detection</span>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ===== SLIDE 7: Code Example ===== -->
+<div class="slide" id="slide-7">
+  <h2 class="anim d1">Example: Agent-Generated SYN Flood Filter</h2>
+  <div class="two-col" style="margin-top: 12px;">
+    <div class="anim d2">
+      <h4 style="color: var(--pink); margin-bottom: 8px;">User Intent (Natural Language)</h4>
+      <div class="highlight-box">
+        "Detect and drop SYN flood attacks. If a source IP sends more than 50 SYN
+        packets within a ~1 second window, drop all subsequent SYN packets from that IP."
+      </div>
+      <h4 style="color: var(--green); margin-bottom: 8px; margin-top: 20px;">Agent-Generated eBPF Logic</h4>
+      <pre><span class="cm">// Only inspect TCP SYN packets</span>
+<span class="kw">if</span> (pkt->protocol != PKT_PROTO_TCP)
+    <span class="kw">goto</span> chain_next;
+<span class="kw">if</span> (!(pkt->tcp_flags & PKT_TCP_SYN))
+    <span class="kw">goto</span> chain_next;
+
+<span class="cm">// Hash source IP to a timestamp bucket</span>
+__u32 bucket = <span class="fn">ip_hash5</span>(pkt->src_ip);
+__u64 now = pkt->timestamp;
+__u64 window = <span class="num">1000000000ULL</span>; <span class="cm">// 1 second in ns</span>
+
+<span class="cm">// Check if this IP was seen recently</span>
+<span class="kw">if</span> (now - state->timestamps[bucket] < window) {
+    state->counters[bucket & <span class="num">0xF</span>]++;
+    <span class="kw">if</span> (state->counters[bucket & <span class="num">0xF</span>] > <span class="num">50</span>) {
+        state->drop_count++;
+        <span class="kw">return</span> XDP_DROP;
+    }
+} <span class="kw">else</span> {
+    <span class="cm">// New window: reset counter</span>
+    state->timestamps[bucket] = now;
+    state->counters[bucket & <span class="num">0xF</span>] = <span class="num">1</span>;
+}
+state->match_count++;</pre>
+    </div>
+    <div class="anim d3">
+      <h4 style="color: var(--cyan); margin-bottom: 8px;">What Makes This Impossible with Static Rules</h4>
+      <ul>
+        <li><strong>Temporal state:</strong> tracks per-IP packet timestamps across a sliding window</li>
+        <li><strong>Counting:</strong> maintains per-IP counters that reset every window</li>
+        <li><strong>Threshold logic:</strong> "more than 50 within 1 second" requires arithmetic</li>
+        <li><strong>Selective dropping:</strong> only drops after threshold; first N packets pass</li>
+      </ul>
+
+      <h4 style="color: var(--cyan); margin-bottom: 8px; margin-top: 28px;">Comparison with Static Rule Attempt</h4>
+      <table class="vs-table">
+        <tr><th>Capability</th><th>Static Rule</th><th>Agent eBPF</th></tr>
+        <tr><td>Block all SYN from IP X</td><td class="check">&check;</td><td class="check">&check;</td></tr>
+        <tr><td>Rate limit per IP</td><td class="cross">&cross;</td><td class="check">&check;</td></tr>
+        <tr><td>Time-window detection</td><td class="cross">&cross;</td><td class="check">&check;</td></tr>
+        <tr><td>Auto-reset counters</td><td class="cross">&cross;</td><td class="check">&check;</td></tr>
+        <tr><td>Per-IP state tracking</td><td class="cross">&cross;</td><td class="check">&check;</td></tr>
+        <tr><td>Graceful threshold</td><td class="cross">&cross;</td><td class="check">&check;</td></tr>
+      </table>
+    </div>
+  </div>
+</div>
+
+<!-- ===== SLIDE 8: Performance ===== -->
+<div class="slide" id="slide-8">
+  <h2 class="anim d1">Performance Characteristics</h2>
+  <div class="three-col" style="margin-top: 28px;">
+    <div class="metric card anim d2">
+      <div class="value" style="color: var(--green);">0</div>
+      <div class="unit">Downtime for filter deployment</div>
+      <p style="margin-top: 12px; font-size: 0.85em;">
+        BPF tail call slot update is atomic &mdash; new filters are live
+        from the next packet. No service restart required.
+      </p>
+    </div>
+    <div class="metric card anim d3">
+      <div class="value">14M</div>
+      <div class="unit">Packets/sec throughput</div>
+      <p style="margin-top: 12px; font-size: 0.85em;">
+        XDP processes at driver level before sk_buff allocation.
+        Agent-generated filters add &lt;100ns per packet.
+      </p>
+    </div>
+    <div class="metric card anim d4">
+      <div class="value">4</div>
+      <div class="unit">Safety verification layers</div>
+      <p style="margin-top: 12px; font-size: 0.85em;">
+        Static sandbox + Template confinement + Compiler checks +
+        Kernel verifier. Defense in depth.
+      </p>
+    </div>
+  </div>
+
+  <div class="two-col anim d5" style="margin-top: 36px;">
+    <div>
+      <h4 style="color: var(--cyan); margin-bottom: 12px;">Deployment Latency Breakdown</h4>
+      <table class="vs-table">
+        <tr><th>Stage</th><th>Latency</th></tr>
+        <tr><td>LLM Code Generation</td><td>2&ndash;8s (API dependent)</td></tr>
+        <tr><td>Static Sandbox Check</td><td>&lt; 1ms</td></tr>
+        <tr><td>Clang Compilation</td><td>200&ndash;500ms</td></tr>
+        <tr><td>Kernel Verification</td><td>10&ndash;50ms</td></tr>
+        <tr><td>Tail Call Slot Update</td><td>&lt; 1&mu;s (atomic)</td></tr>
+        <tr style="font-weight:bold;"><td>Total (end-to-end)</td><td>3&ndash;9s</td></tr>
+      </table>
+    </div>
+    <div>
+      <h4 style="color: var(--cyan); margin-bottom: 12px;">vs. Static Rule Update</h4>
+      <table class="vs-table">
+        <tr><th>Metric</th><th>Static</th><th>Agent eBPF</th></tr>
+        <tr><td>Update latency</td><td>&lt; 1ms</td><td>3&ndash;9s</td></tr>
+        <tr><td>Expressiveness</td><td>5-tuple</td><td>Turing-complete*</td></tr>
+        <tr><td>State tracking</td><td class="cross">&cross;</td><td class="check">&check;</td></tr>
+        <tr><td>Temporal logic</td><td class="cross">&cross;</td><td class="check">&check;</td></tr>
+        <tr><td>Hot-reload</td><td class="check">&check;</td><td class="check">&check;</td></tr>
+        <tr><td>Safety guarantee</td><td>N/A</td><td>Kernel verifier</td></tr>
+      </table>
+      <p style="font-size: 0.75em; color: var(--text-dim); margin-top: 8px;">
+        * Bounded Turing-complete: the eBPF verifier enforces termination.
+      </p>
+    </div>
+  </div>
+</div>
+
+<!-- ===== SLIDE 9: API ===== -->
+<div class="slide" id="slide-9">
+  <h2 class="anim d1">API Design: From Intent to Defense</h2>
+  <div class="two-col" style="margin-top: 16px;">
+    <div class="anim d2">
+      <h4 style="color: var(--green); margin-bottom: 12px;">Generate Filter from Natural Language</h4>
+      <pre>POST /api/ebpf/generate
+{
+  <span class="st">"intent"</span>: <span class="st">"Block IPs sending &gt;100 DNS
+            queries per second (UDP port 53)"</span>,
+  <span class="st">"analyze_type"</span>: <span class="st">"security"</span>
+}</pre>
+
+      <h4 style="color: var(--orange); margin-bottom: 12px; margin-top: 24px;">Deploy Generated Code</h4>
+      <pre>POST /api/ebpf/deploy
+{
+  <span class="st">"source_code"</span>: <span class="st">"..."</span>,
+  <span class="st">"slot"</span>: <span class="num">0</span>,
+  <span class="st">"name"</span>: <span class="st">"dns_rate_limiter"</span>,
+  <span class="st">"auto_enable"</span>: <span class="kw">true</span>
+}</pre>
+
+      <h4 style="color: var(--cyan); margin-bottom: 12px; margin-top: 24px;">Switch Filter Mode</h4>
+      <pre>POST /api/ebpf/mode
+{ <span class="st">"mode"</span>: <span class="st">"programmable"</span> }</pre>
+    </div>
+    <div class="anim d3">
+      <h4 style="color: var(--accent-light); margin-bottom: 12px;">Full Endpoint Reference</h4>
+      <table class="vs-table">
+        <tr><th>Method</th><th>Endpoint</th><th>Function</th></tr>
+        <tr><td><code>GET</code></td><td><code>/api/ebpf/mode</code></td><td>Current filter mode</td></tr>
+        <tr><td><code>POST</code></td><td><code>/api/ebpf/mode</code></td><td>Switch mode</td></tr>
+        <tr><td><code>POST</code></td><td><code>/api/ebpf/generate</code></td><td>AI codegen</td></tr>
+        <tr><td><code>POST</code></td><td><code>/api/ebpf/deploy</code></td><td>Compile &amp; load</td></tr>
+        <tr><td><code>POST</code></td><td><code>/api/ebpf/validate</code></td><td>Sandbox check</td></tr>
+        <tr><td><code>GET</code></td><td><code>/api/ebpf/programs</code></td><td>List loaded filters</td></tr>
+        <tr><td><code>GET</code></td><td><code>/api/ebpf/programs/:slot</code></td><td>Get filter details</td></tr>
+        <tr><td><code>DELETE</code></td><td><code>/api/ebpf/programs/:slot</code></td><td>Unload filter</td></tr>
+      </table>
+
+      <div class="highlight-box" style="margin-top: 24px;">
+        <strong>Workflow:</strong><br>
+        1. <code>POST /generate</code> &rarr; get AI-generated code + analysis<br>
+        2. Review code and sandbox report<br>
+        3. <code>POST /deploy</code> &rarr; compile, verify, load into XDP<br>
+        4. <code>POST /mode</code> &rarr; switch to programmable mode
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ===== SLIDE 10: Comparison ===== -->
+<div class="slide" id="slide-10">
+  <h2 class="anim d1">Expressiveness Comparison</h2>
+
+  <table class="vs-table anim d2" style="margin-top: 24px; max-width: 1000px;">
+    <tr>
+      <th>Defense Scenario</th>
+      <th>Static Rule Engine</th>
+      <th>Agent-Programmable eBPF</th>
+    </tr>
+    <tr>
+      <td>Block IP 10.0.0.1 port 22</td>
+      <td class="check">&check; Single rule</td>
+      <td class="check">&check; Trivial</td>
+    </tr>
+    <tr>
+      <td>Block SYN flood (&gt;N/s per IP)</td>
+      <td class="cross">&cross; No rate tracking</td>
+      <td class="check">&check; Per-IP counters + time window</td>
+    </tr>
+    <tr>
+      <td>Detect DNS tunneling</td>
+      <td class="cross">&cross; No cross-packet state</td>
+      <td class="check">&check; Bloom filter + frequency counting</td>
+    </tr>
+    <tr>
+      <td>Distributed port scan detection</td>
+      <td class="cross">&cross; No multi-port tracking</td>
+      <td class="check">&check; Hash-based port set tracking</td>
+    </tr>
+    <tr>
+      <td>TLS fingerprinting (JA3)</td>
+      <td class="cross">&cross; L3/L4 only</td>
+      <td class="check">&check; Byte-level pattern matching</td>
+    </tr>
+    <tr>
+      <td>Adaptive rate limiting</td>
+      <td class="cross">&cross; Fixed thresholds only</td>
+      <td class="check">&check; Token bucket with dynamic rates</td>
+    </tr>
+    <tr>
+      <td>ICMP covert channel detection</td>
+      <td class="cross">&cross; Type/code matching only</td>
+      <td class="check">&check; Payload entropy analysis</td>
+    </tr>
+    <tr>
+      <td>Geofencing (IP range blocking)</td>
+      <td style="color: var(--orange);">&sim; Multiple rules needed</td>
+      <td class="check">&check; Subnet mask computation</td>
+    </tr>
+    <tr>
+      <td>Time-of-day access control</td>
+      <td class="cross">&cross; No temporal awareness</td>
+      <td class="check">&check; Timestamp comparison</td>
+    </tr>
+  </table>
+
+  <div class="highlight-box anim d3" style="max-width: 1000px; margin-top: 24px;">
+    <strong>The fundamental shift:</strong> Static rules express <em>what to match</em>.
+    Programmable eBPF filters express <em>how to think about traffic</em> &mdash;
+    with state, time, counters, and arbitrary computation at wire speed.
+  </div>
+</div>
+
+<!-- ===== SLIDE 11: Conclusion ===== -->
+<div class="slide" id="slide-11">
+  <h2 class="anim d1">Conclusion &amp; Future Work</h2>
+  <div class="two-col" style="margin-top: 20px;">
+    <div class="anim d2">
+      <h4 style="color: var(--green); margin-bottom: 16px;">Contributions</h4>
+      <ul>
+        <li><strong>First system</strong> enabling LLM agents to synthesize and hot-deploy
+            eBPF XDP defense programs from natural language</li>
+        <li><strong>4-layer safety model</strong> ensuring that AI-generated code cannot
+            compromise kernel integrity</li>
+        <li><strong>Composable filter chain</strong> via BPF tail calls with zero-downtime deployment</li>
+        <li><strong>Qualitative expressiveness leap</strong> from 5-tuple matching to
+            stateful, temporal, cross-flow network defense</li>
+      </ul>
+
+      <div class="highlight-box" style="margin-top: 24px;">
+        <strong>Key takeaway:</strong> By leveraging the eBPF verifier as an
+        <em>unforgeable safety oracle</em>, we can safely hand the data plane
+        to an AI agent &mdash; unlocking defense capabilities that no hand-written
+        rule set could achieve.
+      </div>
+    </div>
+    <div class="anim d3">
+      <h4 style="color: var(--orange); margin-bottom: 16px;">Future Directions</h4>
+      <ul>
+        <li><strong>Closed-loop feedback:</strong> Agent reads drop/pass counters from its
+            deployed filter to iteratively refine thresholds</li>
+        <li><strong>Multi-agent defense:</strong> Separate agents for DDoS, exfiltration,
+            and reconnaissance, each occupying a tail call slot</li>
+        <li><strong>Formal verification:</strong> Use SMT solvers to prove properties of
+            agent-generated code beyond what the kernel verifier checks</li>
+        <li><strong>TC/socket layer:</strong> Extend beyond XDP to TC and socket-level eBPF
+            for egress filtering and process-level isolation</li>
+        <li><strong>Federated filter sharing:</strong> Organizations share verified
+            eBPF defense programs via signed artifact registry</li>
+      </ul>
+
+      <h4 style="color: var(--accent-light); margin-bottom: 12px; margin-top: 24px;">Availability</h4>
+      <p>Open source: <a href="https://github.com/usernameisveryok/PacketScope" style="color: var(--cyan);">
+        github.com/usernameisveryok/PacketScope</a></p>
+      <p style="margin-top: 8px;">
+        <span class="tag">eBPF</span>
+        <span class="tag">XDP</span>
+        <span class="tag">LLM</span>
+        <span class="tag">Network Security</span>
+        <span class="tag">Programmable Data Plane</span>
+      </p>
+    </div>
+  </div>
+</div>
+
+</div><!-- /slide-container -->
+
+<!-- Navigation -->
+<div class="slide-num" id="slideNum">1 / 11</div>
+<div class="nav">
+  <button onclick="prevSlide()">&larr; Prev</button>
+  <button onclick="nextSlide()">Next &rarr;</button>
+</div>
+
+<script>
+let current = 1;
+const total = 11;
+
+function showSlide(n) {
+  if (n < 1 || n > total) return;
+  const prev = document.querySelector('.slide.active');
+  const next = document.getElementById('slide-' + n);
+  if (prev) {
+    prev.classList.remove('active');
+    if (n > current) prev.classList.add('prev');
+    else prev.classList.remove('prev');
+    setTimeout(() => prev.classList.remove('prev'), 500);
+  }
+  next.classList.add('active');
+  current = n;
+  document.getElementById('slideNum').textContent = n + ' / ' + total;
+}
+
+function nextSlide() { showSlide(current + 1); }
+function prevSlide() { showSlide(current - 1); }
+
+document.addEventListener('keydown', function(e) {
+  if (e.key === 'ArrowRight' || e.key === ' ' || e.key === 'Enter') { e.preventDefault(); nextSlide(); }
+  if (e.key === 'ArrowLeft' || e.key === 'Backspace') { e.preventDefault(); prevSlide(); }
+  if (e.key === 'Home') { e.preventDefault(); showSlide(1); }
+  if (e.key === 'End') { e.preventDefault(); showSlide(total); }
+});
+
+// Touch support
+let touchStartX = 0;
+document.addEventListener('touchstart', e => { touchStartX = e.changedTouches[0].screenX; });
+document.addEventListener('touchend', e => {
+  const dx = e.changedTouches[0].screenX - touchStartX;
+  if (Math.abs(dx) > 50) { dx < 0 ? nextSlide() : prevSlide(); }
+});
+</script>
+</body>
+</html>

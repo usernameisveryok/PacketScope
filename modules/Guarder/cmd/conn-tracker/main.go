@@ -7,7 +7,7 @@ import (
 	"net"
 	"os"
 	"os/signal"
-	// "strings"
+	"path/filepath"
 	"syscall"
 	"time"
 
@@ -65,7 +65,11 @@ func main() {
 	log.Printf("Successfully attached XDP program to interface %s", *ifaceName)
 
 	// Create and start API server
-	apiServer := NewAPIServer(&objs)
+	includePath := filepath.Join(filepath.Dir(filepath.Dir(filepath.Dir(os.Args[0]))), "include")
+	if envInclude := os.Getenv("EBPF_INCLUDE_PATH"); envInclude != "" {
+		includePath = envInclude
+	}
+	apiServer := NewAPIServer(&objs, includePath)
 	go func() {
 		if err := apiServer.Start(*apiAddr); err != nil {
 			log.Printf("API server error: %v", err)

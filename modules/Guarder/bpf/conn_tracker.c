@@ -146,14 +146,64 @@ struct
     __type(value, struct perf_stats);
 } perf_stats_map SEC(".maps");
 
-// Filter rules map
+// Filter rules map (legacy static rules, retained for backward compatibility)
 struct
 {
     __uint(type, BPF_MAP_TYPE_ARRAY);
-    __uint(max_entries, 32); // 减少到32个规则，更容易被验证器接受
+    __uint(max_entries, 32);
     __type(key, __u32);
     __type(value, struct filter_rule);
 } filter_map SEC(".maps");
+
+// ============================================================
+// Agent-Programmable eBPF Filter Infrastructure
+// ============================================================
+
+// Packet context shared with agent-generated tail-call programs.
+struct pkt_context
+{
+    __u32 src_ip;
+    __u32 dst_ip;
+    __u16 src_port;
+    __u16 dst_port;
+    __u8  protocol;
+    __u8  tcp_flags;
+    __u8  icmp_type;
+    __u8  icmp_code;
+    __u32 pkt_len;
+    __u64 timestamp;
+    __u32 ifindex;
+    __u32 __reserved[3];
+};
+
+// Per-CPU context map: main program writes packet metadata here before
+// dispatching to agent-generated filters via tail call.
+struct
+{
+    __uint(type, BPF_MAP_TYPE_PERCPU_ARRAY);
+    __uint(max_entries, 1);
+    __type(key, __u32);
+    __type(value, struct pkt_context);
+} pkt_ctx_map SEC(".maps");
+
+// Program array for tail-call dispatch to agent-generated XDP filters.
+// Slot 0..15 can each hold one loaded agent filter program.
+struct
+{
+    __uint(type, BPF_MAP_TYPE_PROG_ARRAY);
+    __uint(max_entries, 16);
+    __type(key, __u32);
+    __type(value, __u32);
+} prog_filter_map SEC(".maps");
+
+// Global toggle: 0 = use legacy static rules, 1 = use programmable filters.
+struct
+{
+    __uint(type, BPF_MAP_TYPE_ARRAY);
+    __uint(max_entries, 1);
+    __type(key, __u32);
+    __type(value, __u32);
+} filter_mode_map SEC(".maps");
 
 // TCP flags definitions
 #define TCP_FIN 0x01
@@ -492,12 +542,78 @@ int conn_tracker(struct xdp_md *ctx)
     __sync_fetch_and_add(&stats->total_packets, 1);
     __sync_fetch_and_add(&stats->total_bytes, bpf_ntohs(ip->tot_len));
 
-    // Check filter rules first
-    int filter_result = check_enhanced_filter_rules(ip->saddr, ip->daddr, 0, 0, ip->protocol, 0, 0, 0, 0, 0, 0);
-    if (filter_result == XDP_DROP)
+    // Determine filter mode: 0 = legacy static rules, 1 = agent-programmable filters
+    __u32 mode_key = 0;
+    __u32 *filter_mode = bpf_map_lookup_elem(&filter_mode_map, &mode_key);
+    __u32 use_programmable = filter_mode ? *filter_mode : 0;
+
+    if (use_programmable)
     {
-        __sync_fetch_and_add(&stats->dropped_packets, 1);
-        return XDP_DROP;
+        // --- Agent-Programmable Filter Path ---
+        // Populate per-CPU packet context for tail-called programs
+        __u32 ctx_key = 0;
+        struct pkt_context *pkt_ctx = bpf_map_lookup_elem(&pkt_ctx_map, &ctx_key);
+        if (pkt_ctx)
+        {
+            pkt_ctx->src_ip    = ip->saddr;
+            pkt_ctx->dst_ip    = ip->daddr;
+            pkt_ctx->src_port  = 0;
+            pkt_ctx->dst_port  = 0;
+            pkt_ctx->protocol  = ip->protocol;
+            pkt_ctx->tcp_flags = 0;
+            pkt_ctx->icmp_type = 0;
+            pkt_ctx->icmp_code = 0;
+            pkt_ctx->pkt_len   = bpf_ntohs(ip->tot_len);
+            pkt_ctx->timestamp = bpf_ktime_get_ns();
+            pkt_ctx->ifindex   = ctx->ingress_ifindex;
+
+            // Parse transport-layer fields into context before dispatch
+            if (ip->protocol == IPPROTO_TCP)
+            {
+                struct tcphdr *tcp = (void *)ip + (ip->ihl * 4);
+                if ((void *)tcp + sizeof(*tcp) <= data_end)
+                {
+                    pkt_ctx->src_port  = bpf_ntohs(tcp->source);
+                    pkt_ctx->dst_port  = bpf_ntohs(tcp->dest);
+                    pkt_ctx->tcp_flags = tcp->fin | (tcp->syn << 1) | (tcp->rst << 2) |
+                                         (tcp->psh << 3) | (tcp->ack << 4) | (tcp->urg << 5);
+                }
+            }
+            else if (ip->protocol == IPPROTO_UDP)
+            {
+                struct udphdr *udp = (void *)ip + (ip->ihl * 4);
+                if ((void *)udp + sizeof(*udp) <= data_end)
+                {
+                    pkt_ctx->src_port = bpf_ntohs(udp->source);
+                    pkt_ctx->dst_port = bpf_ntohs(udp->dest);
+                }
+            }
+            else if (ip->protocol == IPPROTO_ICMP)
+            {
+                struct icmphdr *icmp_hdr = (void *)ip + (ip->ihl * 4);
+                if ((void *)icmp_hdr + sizeof(*icmp_hdr) <= data_end)
+                {
+                    pkt_ctx->icmp_type = icmp_hdr->type;
+                    pkt_ctx->icmp_code = icmp_hdr->code;
+                }
+            }
+
+            // Dispatch to first agent-generated filter via tail call.
+            // If slot 0 is empty, tail call fails silently and we fall through.
+            bpf_tail_call(ctx, &prog_filter_map, 0);
+        }
+        // Fall-through: no programmable filter loaded, allow packet
+    }
+    else
+    {
+        // --- Legacy Static Rule Path ---
+        int filter_result = check_enhanced_filter_rules(
+            ip->saddr, ip->daddr, 0, 0, ip->protocol, 0, 0, 0, 0, 0, 0);
+        if (filter_result == XDP_DROP)
+        {
+            __sync_fetch_and_add(&stats->dropped_packets, 1);
+            return XDP_DROP;
+        }
     }
 
     // Handle different protocols
@@ -508,17 +624,20 @@ int conn_tracker(struct xdp_md *ctx)
         if ((void *)tcp + sizeof(*tcp) > data_end)
             return XDP_PASS;
 
-        // Check filter rules with ports for TCP
-        int tcp_filter_result = check_enhanced_filter_rules(ip->saddr, ip->daddr,
-                                                            bpf_ntohs(tcp->source),
-                                                            bpf_ntohs(tcp->dest),
-                                                            IPPROTO_TCP, 0, 0,
-                                                            tcp->fin | (tcp->syn << 1) | (tcp->rst << 2) | (tcp->psh << 3) | (tcp->ack << 4) | (tcp->urg << 5),
-                                                            0, 0, 0);
-        if (tcp_filter_result == XDP_DROP)
+        // Legacy static rules: per-port TCP filtering
+        if (!use_programmable)
         {
-            __sync_fetch_and_add(&stats->dropped_packets, 1);
-            return XDP_DROP;
+            int tcp_filter_result = check_enhanced_filter_rules(ip->saddr, ip->daddr,
+                                                                bpf_ntohs(tcp->source),
+                                                                bpf_ntohs(tcp->dest),
+                                                                IPPROTO_TCP, 0, 0,
+                                                                tcp->fin | (tcp->syn << 1) | (tcp->rst << 2) | (tcp->psh << 3) | (tcp->ack << 4) | (tcp->urg << 5),
+                                                                0, 0, 0);
+            if (tcp_filter_result == XDP_DROP)
+            {
+                __sync_fetch_and_add(&stats->dropped_packets, 1);
+                return XDP_DROP;
+            }
         }
 
         struct conn_key key = {
@@ -548,15 +667,17 @@ int conn_tracker(struct xdp_md *ctx)
         if ((void *)udp + sizeof(*udp) > data_end)
             return XDP_PASS;
 
-        // Check filter rules with ports for UDP
-        int udp_filter_result = check_enhanced_filter_rules(ip->saddr, ip->daddr,
-                                                            bpf_ntohs(udp->source),
-                                                            bpf_ntohs(udp->dest),
-                                                            IPPROTO_UDP, 0, 0, 0, 0, 0, 0);
-        if (udp_filter_result == XDP_DROP)
+        if (!use_programmable)
         {
-            __sync_fetch_and_add(&stats->dropped_packets, 1);
-            return XDP_DROP;
+            int udp_filter_result = check_enhanced_filter_rules(ip->saddr, ip->daddr,
+                                                                bpf_ntohs(udp->source),
+                                                                bpf_ntohs(udp->dest),
+                                                                IPPROTO_UDP, 0, 0, 0, 0, 0, 0);
+            if (udp_filter_result == XDP_DROP)
+            {
+                __sync_fetch_and_add(&stats->dropped_packets, 1);
+                return XDP_DROP;
+            }
         }
 
         struct conn_key key = {
@@ -605,14 +726,16 @@ int conn_tracker(struct xdp_md *ctx)
         // 更新性能统计
         update_perf_stats(stats, icmp->type, icmp->code, 0, 0, 0, 0);
 
-        // Check filter rules with inner packet info for ICMP
-        int icmp_filter_result = check_enhanced_filter_rules(ip->saddr, ip->daddr, 0, 0,
-                                                             IPPROTO_ICMP, icmp->type, icmp->code, 0,
-                                                             inner_src_ip, inner_dst_ip, inner_protocol);
-        if (icmp_filter_result == XDP_DROP)
+        if (!use_programmable)
         {
-            __sync_fetch_and_add(&stats->dropped_packets, 1);
-            return XDP_DROP;
+            int icmp_filter_result = check_enhanced_filter_rules(ip->saddr, ip->daddr, 0, 0,
+                                                                 IPPROTO_ICMP, icmp->type, icmp->code, 0,
+                                                                 inner_src_ip, inner_dst_ip, inner_protocol);
+            if (icmp_filter_result == XDP_DROP)
+            {
+                __sync_fetch_and_add(&stats->dropped_packets, 1);
+                return XDP_DROP;
+            }
         }
     }
 

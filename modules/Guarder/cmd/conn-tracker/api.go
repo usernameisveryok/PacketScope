@@ -17,10 +17,11 @@ type APIServer struct {
 	filterManager *FilterManager
 	aiGenerator   *AIFilterGenerator
 	pcapAnalyzer  *PCAPAnalyzer
+	progManager   *ProgrammableFilterManager
 	mu            sync.RWMutex
 }
 
-func NewAPIServer(objs *connTrackerObjects) *APIServer {
+func NewAPIServer(objs *connTrackerObjects, includePath string) *APIServer {
 	filterManager := NewFilterManager(objs.FilterMap)
 
 	aiConfig := AIFilterConfig{
@@ -32,11 +33,20 @@ func NewAPIServer(objs *connTrackerObjects) *APIServer {
 	aiGenerator := NewAIFilterGenerator(aiConfig)
 	pcapAnalyzer := NewPCAPAnalyzer(aiGenerator)
 
+	progManager := NewProgrammableFilterManager(
+		objs.ProgFilterMap,
+		objs.FilterModeMap,
+		objs.PktCtxMap,
+		aiGenerator,
+		includePath,
+	)
+
 	return &APIServer{
 		objs:          objs,
 		filterManager: filterManager,
 		aiGenerator:   aiGenerator,
 		pcapAnalyzer:  pcapAnalyzer,
+		progManager:   progManager,
 	}
 }
 
@@ -51,6 +61,14 @@ func (s *APIServer) Start(addr string) error {
 	http.HandleFunc("/api/ai/generate", s.handleAIGenerate)
 	http.HandleFunc("/api/ai/analyze", s.handleAIAnalyze)
 	http.HandleFunc("/api/pcap/analyze", s.handlePCAPAnalyze)
+
+	// Agent-Programmable eBPF Filter endpoints
+	http.HandleFunc("/api/ebpf/mode", s.handleEBPFMode)
+	http.HandleFunc("/api/ebpf/generate", s.handleEBPFGenerate)
+	http.HandleFunc("/api/ebpf/deploy", s.handleEBPFDeploy)
+	http.HandleFunc("/api/ebpf/programs", s.handleEBPFPrograms)
+	http.HandleFunc("/api/ebpf/programs/", s.handleEBPFProgramSlot)
+	http.HandleFunc("/api/ebpf/validate", s.handleEBPFValidate)
 
 	fs := http.FileServer(http.Dir("./frontend"))
 	http.Handle("/", fs)
@@ -338,4 +356,215 @@ func formatTCPFlags(flags uint8) string {
 		return "NONE"
 	}
 	return strings.Join(result, "|")
+}
+
+// ============================================================
+// Agent-Programmable eBPF Filter API Handlers
+// ============================================================
+
+func (s *APIServer) handleEBPFMode(w http.ResponseWriter, r *http.Request) {
+	s.enableCORS(w, r)
+	if r.Method == "OPTIONS" {
+		return
+	}
+
+	switch r.Method {
+	case "GET":
+		mode := s.progManager.GetFilterMode()
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(map[string]interface{}{
+			"mode":         map[bool]string{true: "programmable", false: "legacy"}[mode],
+			"programmable": mode,
+			"loaded_count": len(s.progManager.ListFilters()),
+		})
+
+	case "POST":
+		var req struct {
+			Mode string `json:"mode"` // "programmable" or "legacy"
+		}
+		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+			http.Error(w, fmt.Sprintf("invalid JSON: %v", err), http.StatusBadRequest)
+			return
+		}
+
+		programmable := req.Mode == "programmable"
+		if err := s.progManager.SetFilterMode(programmable); err != nil {
+			http.Error(w, fmt.Sprintf("failed to set mode: %v", err), http.StatusInternalServerError)
+			return
+		}
+
+		log.Printf("filter mode switched to: %s", req.Mode)
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(map[string]string{"status": "success", "mode": req.Mode})
+
+	default:
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+	}
+}
+
+func (s *APIServer) handleEBPFGenerate(w http.ResponseWriter, r *http.Request) {
+	s.enableCORS(w, r)
+	if r.Method == "OPTIONS" {
+		return
+	}
+	if r.Method != "POST" {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	var req CodegenRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		http.Error(w, fmt.Sprintf("invalid JSON: %v", err), http.StatusBadRequest)
+		return
+	}
+
+	if strings.TrimSpace(req.Intent) == "" {
+		http.Error(w, "intent is required", http.StatusBadRequest)
+		return
+	}
+
+	s.mu.RLock()
+	resp, err := s.progManager.GenerateFilter(s.objs, req)
+	s.mu.RUnlock()
+
+	if err != nil {
+		http.Error(w, fmt.Sprintf("generation failed: %v", err), http.StatusInternalServerError)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(resp)
+}
+
+func (s *APIServer) handleEBPFDeploy(w http.ResponseWriter, r *http.Request) {
+	s.enableCORS(w, r)
+	if r.Method == "OPTIONS" {
+		return
+	}
+	if r.Method != "POST" {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	var req struct {
+		SourceCode  string `json:"source_code"`
+		Slot        int    `json:"slot"`
+		Name        string `json:"name"`
+		Description string `json:"description"`
+		AutoEnable  bool   `json:"auto_enable"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		http.Error(w, fmt.Sprintf("invalid JSON: %v", err), http.StatusBadRequest)
+		return
+	}
+
+	if strings.TrimSpace(req.SourceCode) == "" {
+		http.Error(w, "source_code is required", http.StatusBadRequest)
+		return
+	}
+
+	filter, err := s.progManager.CompileAndLoad(req.SourceCode, req.Slot, req.Name, req.Description)
+	if err != nil {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusBadRequest)
+		json.NewEncoder(w).Encode(map[string]interface{}{
+			"success": false,
+			"error":   err.Error(),
+			"filter":  filter,
+		})
+		return
+	}
+
+	if req.AutoEnable {
+		s.progManager.SetFilterMode(true)
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusCreated)
+	json.NewEncoder(w).Encode(map[string]interface{}{
+		"success": true,
+		"filter":  filter,
+	})
+}
+
+func (s *APIServer) handleEBPFPrograms(w http.ResponseWriter, r *http.Request) {
+	s.enableCORS(w, r)
+	if r.Method == "OPTIONS" {
+		return
+	}
+	if r.Method != "GET" {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	filters := s.progManager.ListFilters()
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]interface{}{
+		"mode":    map[bool]string{true: "programmable", false: "legacy"}[s.progManager.GetFilterMode()],
+		"filters": filters,
+		"max_slots": MaxProgrammableSlots,
+	})
+}
+
+func (s *APIServer) handleEBPFProgramSlot(w http.ResponseWriter, r *http.Request) {
+	s.enableCORS(w, r)
+	if r.Method == "OPTIONS" {
+		return
+	}
+
+	parts := strings.Split(r.URL.Path, "/")
+	if len(parts) < 5 {
+		http.Error(w, "invalid URL: expected /api/ebpf/programs/{slot}", http.StatusBadRequest)
+		return
+	}
+
+	var slot int
+	if _, err := fmt.Sscanf(parts[4], "%d", &slot); err != nil {
+		http.Error(w, "invalid slot number", http.StatusBadRequest)
+		return
+	}
+
+	switch r.Method {
+	case "GET":
+		filter, ok := s.progManager.GetFilter(slot)
+		if !ok {
+			http.Error(w, fmt.Sprintf("no filter in slot %d", slot), http.StatusNotFound)
+			return
+		}
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(filter)
+
+	case "DELETE":
+		if err := s.progManager.UnloadSlot(slot); err != nil {
+			http.Error(w, fmt.Sprintf("failed to unload: %v", err), http.StatusInternalServerError)
+			return
+		}
+		w.WriteHeader(http.StatusNoContent)
+
+	default:
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+	}
+}
+
+func (s *APIServer) handleEBPFValidate(w http.ResponseWriter, r *http.Request) {
+	s.enableCORS(w, r)
+	if r.Method == "OPTIONS" {
+		return
+	}
+	if r.Method != "POST" {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	var req struct {
+		SourceCode string `json:"source_code"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		http.Error(w, fmt.Sprintf("invalid JSON: %v", err), http.StatusBadRequest)
+		return
+	}
+
+	report := s.progManager.sandbox.Report(req.SourceCode)
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(report)
 }
